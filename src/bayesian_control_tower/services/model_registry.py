@@ -1,7 +1,12 @@
-"""Model registry — maps logical names to LiteLLM model strings.
+"""Model registry — maps logical names to ADK model strings.
 
-ADK 2.x uses LiteLLM under the hood for non-Gemini providers.
-Format for non-Google models: "litellm/<provider>/<model-id>"
+ADK 2.x model string format:
+  - Gemini / Google:  "gemini-2.0-flash"          (no prefix, native ADK support)
+  - Anthropic Claude: "claude-sonnet-4-6"          (no prefix, native ADK support)
+  - OpenAI via LiteLLM: "openai/gpt-4o"           (provider/ prefix, LiteLLM bridge)
+  - Other LiteLLM providers: "anthropic/claude-x"  (provider/ prefix)
+
+Do NOT use a "litellm/" prefix — it is not a recognised pattern in ADK's LLMRegistry.
 
 Usage:
     registry = ModelRegistry.default()
@@ -20,24 +25,33 @@ class ModelConfig(BaseModel):
 
 # Central catalogue — extend as needed
 _CATALOGUE: list[ModelConfig] = [
+    # Anthropic — native ADK Claude integration (requires ANTHROPIC_API_KEY)
     ModelConfig(
         alias="claude-sonnet",
-        litellm_model="litellm/anthropic/claude-sonnet-4-6",
+        litellm_model="claude-sonnet-4-6",
         provider="anthropic",
         description="Anthropic Claude Sonnet 4.6 — default reasoning model",
     ),
     ModelConfig(
         alias="claude-opus",
-        litellm_model="litellm/anthropic/claude-opus-4-8",
+        litellm_model="claude-opus-4-8",
         provider="anthropic",
         description="Anthropic Claude Opus 4.8 — highest capability",
     ),
+    # OpenAI — via ADK's LiteLLM bridge (requires OPENAI_API_KEY)
     ModelConfig(
         alias="gpt-4o",
-        litellm_model="litellm/openai/gpt-4o",
+        litellm_model="openai/gpt-4o",
         provider="openai",
-        description="OpenAI GPT-4o",
+        description="OpenAI GPT-4o via LiteLLM",
     ),
+    ModelConfig(
+        alias="gpt-4o-mini",
+        litellm_model="openai/gpt-4o-mini",
+        provider="openai",
+        description="OpenAI GPT-4o Mini via LiteLLM — cost-efficient",
+    ),
+    # Google — native ADK Gemini integration (requires GOOGLE_API_KEY)
     ModelConfig(
         alias="gemini-flash",
         litellm_model="gemini-2.0-flash",

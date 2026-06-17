@@ -88,12 +88,13 @@ All config is via environment variables (see `.env.example`):
 | `GOOGLE_API_KEY` | — | Required for Gemini models |
 | `PORT` | `8000` | Server port |
 
-**Model string format** (LiteLLM prefix for non-Gemini):
+**Model string format** — ADK has native support for Anthropic and Gemini; OpenAI routes via LiteLLM:
 ```
-litellm/anthropic/claude-sonnet-4-6
-litellm/openai/gpt-4o
-gemini-2.0-flash              ← Gemini needs no prefix
+claude-sonnet-4-6   ← Anthropic: no prefix, native ADK Claude integration
+openai/gpt-4o       ← OpenAI: provider/ prefix, routes via LiteLLM bridge
+gemini-2.0-flash    ← Gemini: no prefix, native ADK integration
 ```
+Do **not** use a `litellm/` prefix — it is not a recognised pattern in ADK's model registry.
 
 ---
 
@@ -122,19 +123,48 @@ The server speaks the [A2A protocol](https://google.github.io/A2A/). Key endpoin
 | `/message:stream` | POST | Send a task, stream events (SSE) |
 | `/tasks/{id}` | GET | Fetch task status |
 
-Send a request:
+The SDK uses protocol version **1.0** — the `A2A-Version` header and `messageId` are required, and the role enum is fully qualified:
+
 ```bash
+# Check what the agent can do
+curl http://localhost:8000/.well-known/agent.json
+
+# Send a task (A2A-Version header required; messageId must be unique per request)
 curl -X POST http://localhost:8000/message:send \
   -H "Content-Type: application/json" \
+  -H "A2A-Version: 1.0" \
   -d '{
     "message": {
-      "role": "user",
-      "parts": [{ "text": "<BayesianAdviceRequest JSON here>" }]
+      "messageId": "msg-001",
+      "role": "ROLE_USER",
+      "parts": [{ "text": "Agent planner-1 has 72% confidence. Decision: scale_out vs queue_batch. Prior: high_load_imminent=0.55. Evidence: queue_depth_rising." }]
     }
   }'
 ```
 
 See `notebooks/01_bayesian_exploration.ipynb` for schema construction examples.
+
+---
+
+## Backlog
+
+#### Spikes
+- **Numeric Bayesian inference engine** — evaluate PyMC or pgmpy for real posterior computation; replace the LLM's prose reasoning with quantified probability updates (`services/inference.py`)
+- **Model benchmarking** — compare Claude vs GPT-4o vs Gemini on calibration quality for Bayesian advisory tasks; does the model matter or does prompt engineering dominate?
+- **ADK MemoryService** — spike persistent cross-session memory using ADK's `MemoryService` API so prior beliefs accumulate across calls (`agent/memory.py`)
+- **Streaming executor** — prototype the task-based executor flow (`Task` → status updates → artifact) as the upgrade path from the current immediate-response pattern (`agent/executor.py`)
+
+#### Features
+- **Agent observation tools** — give the agent tools to query live agent state: telemetry endpoints, queue depths, error rates; wire them into `bayesian_agent.py` `tools=[]`
+- **Structured context injection** — accept `BayesianAdviceRequest` as a typed object in the executor rather than raw text; parse and format it as a rich prompt with priors, evidence, and agent states laid out explicitly (`agent/executor.py`)
+- **Longitudinal prior tracking** — store posterior outputs as the next call's priors; build the belief-update chain across a multi-step agent workflow
+- **Uncertainty-aware routing** — if posterior confidence is below a threshold, return `TASK_STATE_INPUT_REQUIRED` and ask for more evidence rather than forcing a recommendation
+- **Multi-skill expansion** — add specialised A2A skills (e.g. `explain_reasoning`, `update_priors`, `suggest_evidence`) to the agent card alongside `bayesian_advice` (`server.py`)
+
+#### Chores
+- **Branch protection** — enable in GitHub: Settings → Branches → require PR + passing CI before merge to `main`
+- **Integration tests** — add a test that runs the full executor with a mocked LLM response; current unit tests don't exercise the ADK runner path (`tests/test_executor_integration.py`)
+- **Observability** — add OpenTelemetry spans around the ADK runner call and A2A request lifecycle; structured logs are in place but traces are missing
 
 ---
 

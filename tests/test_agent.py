@@ -13,11 +13,11 @@ class TestModelRegistry:
     def test_resolve_alias(self) -> None:
         registry = ModelRegistry.default()
         resolved = registry.resolve("claude-sonnet")
-        assert "anthropic" in resolved
+        assert "claude" in resolved
 
     def test_resolve_passthrough(self) -> None:
         registry = ModelRegistry.default()
-        raw = "litellm/openai/gpt-4o-custom"
+        raw = "openai/gpt-4o-custom"
         assert registry.resolve(raw) == raw
 
     def test_by_provider(self) -> None:

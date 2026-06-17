@@ -8,10 +8,11 @@ class Settings(BaseSettings):
     port: int = 8000
     log_level: str = "INFO"
 
-    # Prefix with litellm/ for non-Gemini models, e.g.:
-    #   litellm/anthropic/claude-sonnet-4-6
-    #   litellm/openai/gpt-4o
-    default_model: str = "litellm/anthropic/claude-sonnet-4-6"
+    # ADK model string format:
+    #   Anthropic (direct):  claude-sonnet-4-6   (no prefix — ADK has native Claude support)
+    #   OpenAI (via LiteLLM): openai/gpt-4o      (provider/ prefix, no litellm/ prefix)
+    #   Gemini (direct):     gemini-2.0-flash    (no prefix)
+    default_model: str = "openai/gpt-4o"
 
     anthropic_api_key: str = ""
     openai_api_key: str = ""

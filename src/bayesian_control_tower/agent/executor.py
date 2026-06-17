@@ -1,16 +1,20 @@
-"""A2A AgentExecutor bridging the a2a-sdk protocol to the ADK Bayesian agent.
+"""A2A AgentExecutor — immediate-response pattern.
 
-Uses the a2a-sdk 1.1.0 API directly (the ADK built-in A2A executor targets an
-older SDK version and is not compatible with 1.1.x).
+Runs the ADK agent and returns a single Message event. This is the simplest
+valid A2A executor flow: no task state machine, one response per request.
+
+Upgrade path: swap to the Task-based flow (enqueue Task → status updates →
+artifact → complete) when streaming or long-running behaviour is needed.
 """
+
+import uuid
 
 import structlog
 from a2a.helpers.proto_helpers import get_message_text
 from a2a.server.agent_execution.agent_executor import AgentExecutor
 from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue_v2 import EventQueue
-from a2a.server.tasks.task_updater import TaskUpdater
-from a2a.types.a2a_pb2 import Part
+from a2a.types.a2a_pb2 import Message, Part, Role
 from google.adk.runners import Runner
 from google.genai.types import Content
 from google.genai.types import Part as GenaiPart
@@ -23,7 +27,7 @@ logger = structlog.get_logger(__name__)
 
 
 class BayesianAgentExecutor(AgentExecutor):
-    """Executes Bayesian advisory requests via the ADK runner."""
+    """Runs the Bayesian ADK agent and returns a single A2A Message."""
 
     def __init__(self) -> None:
         self._memory = AgentMemoryService(app_name=settings.agent_name)
@@ -35,25 +39,14 @@ class BayesianAgentExecutor(AgentExecutor):
         )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        task_id = context.task_id or "task-default"
+        task_id = context.task_id or str(uuid.uuid4())
         context_id = context.context_id or task_id
-
-        updater = TaskUpdater(
-            event_queue=event_queue,
-            task_id=task_id,
-            context_id=context_id,
-        )
-        await updater.start_work()
-
-        log = logger.bind(task_id=task_id, context_id=context_id)
-        log.info("bayesian_executor.execute")
-
         user_text = get_message_text(context.message) if context.message else ""
 
-        await self._memory.get_or_create_session(
-            user_id=context_id,
-            session_id=task_id,
-        )
+        log = logger.bind(task_id=task_id)
+        log.info("bayesian_executor.execute", user_text_len=len(user_text))
+
+        await self._memory.get_or_create_session(user_id=context_id, session_id=task_id)
 
         response_parts: list[str] = []
         async for event in self._runner.run_async(
@@ -66,12 +59,17 @@ class BayesianAgentExecutor(AgentExecutor):
                     if part.text:
                         response_parts.append(part.text)
 
-        full_response = "\n".join(response_parts) or "No response generated."
-        log.info("bayesian_executor.complete", response_length=len(full_response))
+        response_text = "\n".join(response_parts) or "(no response)"
+        log.info("bayesian_executor.complete", response_len=len(response_text))
 
-        await updater.add_artifact(parts=[Part(text=full_response)])
-        await updater.complete()
+        await event_queue.enqueue_event(
+            Message(
+                message_id=str(uuid.uuid4()),
+                role=Role.ROLE_AGENT,
+                parts=[Part(text=response_text)],
+            )
+        )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        # TODO: propagate cancellation to the in-flight ADK runner coroutine
+        # TODO: cancel in-flight ADK runner coroutine
         logger.info("bayesian_executor.cancel", task_id=context.task_id)
