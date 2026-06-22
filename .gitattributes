@@ -1,0 +1,15 @@
+# Normalize text files and enforce LF on most source files
+* text=auto
+
+# Force LF for source files and config
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf
+
+# Keep Windows-specific files native to the OS
+*.bat text eol=crlf
+*.cmd text eol=crlf
